@@ -1,0 +1,14 @@
+yum install mysql-devel openldap-devel
+
+make environment
+make requieres
+
+Use db.sql to create MySQL db.
+
+cp samle-tcs.cfg tcs.cfg
+
+Enter information into tcs.cfg.
+
+Look at the ldap question in tcs.py and change them for your environment.
+
+

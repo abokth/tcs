@@ -1,0 +1,4 @@
+* check for name change
+* check no longer staff or student
+* check no longer member of the group
+
