@@ -6,3 +6,87 @@ have access to TCS personal och e-science certificates.
 
 Added here if other universities find it useful.
 
+Short description
+=================
+
+We have all our users in a central database (own system) and data is 
+propagated to ldap where this script gets its information. We have 
+and ldap group where all the users are members and that is the group
+we check against. If you have the group membership as a memberof 
+attribute you will have to change the questions (we have that in an 
+other ldap but this one is easier to use for this).
+
+This script should be run from cron like:
+
+    MAILTO=tcs-revoke@your.domain.tld
+    5 9 * * 1-5     cd /path/to/files/tcs && . .env/bin/activate && ./tcs.py -v
+
+That will update the database with new users and validate the information 
+for old ones.
+
+The report will look like the following when everything is ok:
+
+
+   Report for TCS
+   ==============
+
+   Nothing to report.
+
+   End of report
+
+
+If a user is still in the group but no longer has the right affiliation:
+
+
+   Report for TCS
+   ==============
+
+   User: u17xyu9v now have affiliation other.
+
+   End of report
+
+
+Action:
+0. Check with user
+1. Remove from ldap/UG group
+2. Remove from database:
+    
+    cd /path/to/files/tcs && . .env/bin/activate && ./tcs.py -r u17xyu9v
+
+3. Revoke cert (code to come)
+
+If a user has been removed from the group that are allowed to get certs:
+
+
+   Report for TCS
+   ==============
+
+   User: u17xyu9v is no longer in the group.
+
+   End of report
+
+Same as aboive for changed affiliation.
+
+If a user changed name:
+
+    Report for TCS
+    ==============
+
+    User: u17xyu9v has changed name. In UG: Bash User, Test and in DB: Bash, Test
+
+    End of report
+
+0. Check with user
+1. Update database:
+    
+    cd /path/to/files/tcs && . .env/bin/activate && ./tcs.py -u u17xyu9v
+
+3. Revoke cert (code to come)
+4. User gets new cert
+
+
+TODO
+====
+
+* Better argmunent handling. Just switched to argparse and haven't had 
+  time to look at it.

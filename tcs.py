@@ -7,9 +7,14 @@ import ldap
 import re
 import sys
 
+# Class used with argparse to store arguments.
 class Opts(object):
     pass
 
+# Validate that all users in the database are still in the allowed group
+# ug_users         = users in ldap/UG
+# stored_users     = users in database
+# return: string with report of validation or '' if ok
 def validate_in_ug_group(ug_users, stored_users):
     local_report = ''
     for user in stored_users:
@@ -17,10 +22,16 @@ def validate_in_ug_group(ug_users, stored_users):
             local_report += "User: %s is no longer in the group.\n" % user
     return local_report
 
-def get_ug_users(l):
-    result = l.search_s('ou=groups,ou=UG,dc=kth,dc=se',ldap.SCOPE_SUBTREE,'(cn=app.tcs.id)',['ugMemberKthid'])
+# Get users that are allowed to get certs
+# lc                = ldap connection
+# return: list of users that are allowed to get certs
+def get_ug_users(lc):
+    result = lc.search_s('ou=groups,ou=UG,dc=kth,dc=se',ldap.SCOPE_SUBTREE,'(cn=app.tcs.id)',['ugMemberKthid'])
     return result[0][1]['ugMemberKthid']
 
+# Get users that have been allowed to get certs
+# dbc               = database connection
+# return: list of users stored in the database
 def get_stored_users(dbc):
     users = []
     dbc.execute ("SELECT ugkthid FROM tcsusers")
@@ -30,7 +41,14 @@ def get_stored_users(dbc):
             break
         users.append(row[0])
     return users
-    
+
+# Check that the user is in the database, otherwise add the user
+# dbc               = database connection
+# ugkthid           = ugkthid from ldap (unique user number)
+# eppa              = affiliation from ldap
+# givenname         = firstname from ldap
+# sn                = lastname from ldap
+# return: string with report of validation or '' if ok
 def check_in_database(dbc, ugkthid, eppa, givenname, sn):
     local_report = ''
     dbc.execute ("SELECT ugkthid, eppa, givenname, sn FROM tcsusers WHERE ugkthid = '%s'" % ugkthid)
@@ -42,12 +60,24 @@ def check_in_database(dbc, ugkthid, eppa, givenname, sn):
             ('%s', '%s', '%s', '%s')""" % (ugkthid, eppa, givenname, sn))
     return local_report
 
+# Make sure the affiliation is staff or student
+# Note: This is the only two affiliations we have that are allowed to get
+# certs. This might differ for other universities.
+# eppa              = affiliation from ldap
+# ugkthid           = ugkthid from ldap (unique user number)
+# return: string with report of validation or '' if ok
 def check_affiliation(eppa, ugkthid):
     local_report = ''
     if eppa != "staff" and eppa != "student":
         local_report = "User: %s now have affiliation %s.\n" % (ugkthid, eppa)
     return local_report
-    
+
+# Check if the user has changed his/her name
+# dbc               = database connection
+# ugkthid           = ugkthid from ldap (unique user number)
+# givenname         = firstname from ldap
+# sn                = lastname from ldap
+# return: string with report of validation or '' if ok
 def check_name(dbc, ugkthid, givenname, sn):
     local_report = ''
     dbc.execute ("SELECT givenname, sn FROM tcsusers WHERE ugkthid = '%s'" % ugkthid)
@@ -55,14 +85,20 @@ def check_name(dbc, ugkthid, givenname, sn):
     if row == None:
         return "Could not check name for user %s.\n" % ugkthid
     if unicode(givenname) != row[0] or sn != row[1]:
-        return "User: %s has changed name. In UG: %s, %s and in DB: %s, %s" % (ugkthid, givenname, sn, row[0], row[1])
+        return "User: %s has changed name. In UG: %s, %s and in DB: %s, %s\n" % (ugkthid, givenname, sn, row[0], row[1])
     return local_report
 
+# Init configuration
+# configFile        = configuration file name
+# return: configParser object with configuration                       
 def configuration_init(configFile):
     configuration = ConfigParser.RawConfigParser()
     configuration.read(configFile)
-    return configuration 
+    return configuration
 
+# Init ldap configuration
+# configuration     = configParser object with configuration
+# return: ldap server connection                    
 def ldap_init(configuration):
     ldap_server = configuration.get('ldap', 'server')
     ldap_username = configuration.get('ldap', 'username')
@@ -73,6 +109,9 @@ def ldap_init(configuration):
 
     return lc
 
+# Init mysql configuration
+# configuration     = configParser object with configuration
+# return: mysql server connection                    
 def mysql_init(configuration):
     mysql_server = configuration.get('mysql', 'server')
     mysql_username = configuration.get('mysql', 'username')
@@ -96,8 +135,16 @@ def mysql_init(configuration):
 
     return dbc
 
-def getUserInfo(lc, user):
-    result = lc.search_s('ou=People,ou=UG,dc=kth,dc=se',ldap.SCOPE_SUBTREE,'(ugkthid=%s)' % user,['sn', 'givenName', 'eduPersonPrimaryAffiliation', 'ugkthid'])
+# Get user info from ldap/UG
+# lc                = ldap connection
+# ugkthid           = ugkthid from ldap (unique user number)
+# return: data from ldap
+#  ugkthid = uniq identifier of user
+#  givenname = firstname
+#  sn = lastname
+#  eppa = edupersonprimaryaffiliation ("staff", "student" or "")
+def getUserInfo(lc, ugkthid):
+    result = lc.search_s('ou=People,ou=UG,dc=kth,dc=se',ldap.SCOPE_SUBTREE,'(ugkthid=%s)' % ugkthid,['sn', 'givenName', 'eduPersonPrimaryAffiliation', 'ugkthid'])
     ugkthid = result[0][1]['ugkthid'][0]
     givenname = unicode(result[0][1]['givenName'][0].decode('iso-8859-1'))
     sn = unicode(result[0][1]['sn'][0].decode('iso-8859-1'))
@@ -105,6 +152,11 @@ def getUserInfo(lc, user):
     return (ugkthid, givenname, sn, eppa)
 
 
+# For each user call validation functions                                        
+# lc                = ldap connection
+# dbc               = database connection
+# ug_users          = users in ldap/UG
+# return: string with report of validation or '' if ok
 def validate_each_user(dbc, lc, ug_users):
     local_report = ''
     for user in ug_users:
@@ -115,6 +167,10 @@ def validate_each_user(dbc, lc, ug_users):
 
     return local_report
 
+# Main validate function that calls other validation functions
+# lc                = ldap connection
+# dbc               = database connection
+# return: True and output report to stdout
 def validate(lc, dbc):
     report = ''
 
@@ -125,7 +181,7 @@ def validate(lc, dbc):
         sys.exit(1)
 
     stored_users = get_stored_users(dbc)
-   
+
     report += validate_in_ug_group(ug_users, stored_users)
 
     report += validate_each_user(dbc, lc, ug_users)
@@ -139,58 +195,88 @@ def validate(lc, dbc):
         print "Nothing to report."
         print ""
     print "End of report"
+    return True
 
-def valid_u1(u1):
-    if re.search(r'^u1[a-z0-9]{6}$', u1):
+# Validate a ugkthid
+# lc                = ldap connection
+# dbc               = database connection
+# ugkthid           = ugkthid from ldap (unique user number)
+# return: True or halt on failure               
+def valid_ugkthid(ugkthid):
+    if re.search(r'^u1[a-z0-9]{6}$', ugkthid):
         return True
     else:
-        print "Not a valid u1: %s" % u1
+        print "Not a valid ugkthid: %s" % ugkthid
         sys.exit(1)
 
-def removeUserDB(dbc, user):
+# Remove user ugkthid from database                   
+# lc                = ldap connection
+# dbc               = database connection
+# ugkthid           = ugkthid from ldap (unique user number)
+# return: True or halt on failure               
+def removeUserDB(dbc, ugkthid):
     stored_users = get_stored_users(dbc)
-    if user in stored_users:
-        dbc.execute ("DELETE FROM tcsusers WHERE ugkthid = '%s' LIMIT 1" % user)
+    if ugkthid in stored_users:
+        dbc.execute ("DELETE FROM tcsusers WHERE ugkthid = '%s' LIMIT 1" % ugkthid)
+        return True
     else:
-        print "User: %s not in db" % user
+        print "User: %s not in db" % ugkthid
         sys.exit(1)
 
-def updateUserDB(lc, dbc, u1):
+# Update user ugkthid in the database
+# lc                = ldap connection
+# dbc               = database connection
+# ugkthid           = ugkthid from ldap (unique user number)
+# return: True or halt on failure               
+def updateUserDB(lc, dbc, ugkthid):
     stored_users = get_stored_users(dbc)
-    if u1 in stored_users:
-        (ugkthid, givenname, sn, eppa) = getUserInfo(lc, u1)
+    if ugkthid in stored_users:
+        (ugkthid, givenname, sn, eppa) = getUserInfo(lc, ugkthid)
         dbc.execute ("""UPDATE tcsusers 
                 SET givenname='%s', sn='%s', eppa='%s' 
-                WHERE ugkthid = '%s'""" % (givenname, sn, eppa, u1))
-        print "User: %s updated to %s, %s, %s" % (u1, givenname, sn, eppa)
+                WHERE ugkthid = '%s'""" % (givenname, sn, eppa, ugkthid))
+        print "User: %s updated to %s, %s, %s" % (ugkthid, givenname, sn, eppa)
+        return True                                                                               
     else:
-        print "User: %s not in db" % user
+        print "User: %s not in db" % ugkthid
         sys.exit(1)
 
-def remove(lc, dbc, u1):
+# Check if we can delete user from db and if so call function to do it.                   
+# lc                = ldap connection
+# dbc               = database connection
+# ugkthid           = ugkthid from ldap (unique user number)
+# return: True or halt on failure               
+def remove(lc, dbc, ugkthid):
     ug_users = get_ug_users(lc)
-    valid_u1(u1)
-    if not u1 in ug_users:
-        removeUserDB(dbc, u1)
+    valid_ugkthid(ugkthid)
+    if not ugkthid in ug_users:
+        removeUserDB(dbc, ugkthid)
     else:
-         print "User: %s still in UG-group. Remove there first." % u1
+         print "User: %s still in UG-group. Remove there first." % ugkthid
          sys.exit(1)
     return True
 
-def update(lc, dbc, u1):
+# Check if user is in ug group and it is a valid u1. If so call function to
+# update db.
+# lc                = ldap connection
+# dbc               = database connection
+# ugkthid           = ugkthid from ldap (unique user number)
+# return: True or halt on failure               
+def update(lc, dbc, ugkthid):
     ug_users = get_ug_users(lc)
-    valid_u1(u1)
-    if u1 in ug_users:
-        updateUserDB(lc, dbc, u1)
+    valid_ugkthid(ugkthid)
+    if ugkthid in ug_users:
+        updateUserDB(lc, dbc, ugkthid)
     else:
-        print "User: %s not in UG-group. Add them there first." % u1
+        print "User: %s not in UG-group. Add them there first." % ugkthid
         sys.exit(1)
     return True
 
+# main function
 def main():
     options = Opts()
     parser = argparse.ArgumentParser(description='TCS admin tool.')
-    parser.add_argument('-c', 
+    parser.add_argument('-c',
         help="Specify configuration file", default='tcs.cfg', dest="configFile")
     parser.add_argument("-v", action="store_true", dest="validateUser",
         help="Validate users", default=False)
@@ -205,13 +291,15 @@ def main():
         print "Use only one of -v -u"
         sys.exit(1)
 
-    configuration = configuration_init(options.configFile) 
+    configuration = configuration_init(options.configFile)
     lc = ldap_init(configuration)
-    
+
     dbc = mysql_init(configuration)
 
     if options.validateUser:
         validate(lc, dbc)
+    elif not options.User:
+        print "Must specify one user"
     elif options.removeUser:
         remove(lc, dbc, options.User)
     elif options.updateUser:
