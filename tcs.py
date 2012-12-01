@@ -76,6 +76,7 @@ def check_in_database(dbc, ugkthid, eppa, givenname, sn):
     return local_report
 
 # Make sure the affiliation is staff or student
+# temporary allow other
 # Note: This is the only two affiliations we have that are allowed to get
 # certs. This might differ for other universities.
 # eppa              = affiliation from ldap
@@ -83,7 +84,7 @@ def check_in_database(dbc, ugkthid, eppa, givenname, sn):
 # return: string with report of validation or '' if ok
 def check_affiliation(eppa, ugkthid):
     local_report = ''
-    if eppa != "staff" and eppa != "student":
+    if eppa != "staff" and eppa != "student" and eppa != "other":
         local_report = "User: %s now have affiliation %s.\n" % (ugkthid, eppa)
     return local_report
 
