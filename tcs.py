@@ -161,8 +161,8 @@ def mysql_init(configuration):
 #  sn = lastname
 #  eppa = edupersonprimaryaffiliation ("staff", "student" or "")
 def getUserInfo(lc, ugkthid):
-    result = lc.search_s('ou=People,ou=UG,dc=kth,dc=se',ldap.SCOPE_SUBTREE,'(ugkthid=%s)' % ugkthid,['sn', 'givenName', 'eduPersonPrimaryAffiliation', 'ugkthid'])
-    ugkthid = result[0][1]['ugkthid'][0]
+    result = lc.search_s('ou=People,ou=UG,dc=kth,dc=se',ldap.SCOPE_SUBTREE,'(ugKthid=%s)' % ugkthid,['sn', 'givenName', 'eduPersonPrimaryAffiliation', 'ugKthid'])
+    ugkthid = result[0][1]['ugKthid'][0]
     givenname = unicode(result[0][1]['givenName'][0].decode('iso-8859-1'))
     sn = unicode(result[0][1]['sn'][0].decode('iso-8859-1'))
     eppa = result[0][1]['eduPersonPrimaryAffiliation'][0]
