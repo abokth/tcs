@@ -140,7 +140,8 @@ def mysql_init(configuration):
             mysql_username,
             mysql_password,
             mysql_database,
-            use_unicode=True)
+            use_unicode=True,
+            ssl={'capath': '/etc/pki/tls/certs'})
         db.set_character_set('utf8')
         dbc = db.cursor ()
         dbc.execute('SET NAMES utf8;')
